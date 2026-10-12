@@ -7,7 +7,7 @@ Aplicación web para diligenciar el formato **AUDITORÍA 5'S** desde el celular 
 - Crea todas las auditorías que necesites; cada una queda guardada en el dispositivo.
 - **Nueva iteración**: repite un proceso copiando proceso y equipo auditor; en el criterio 32 muestra las contramedidas de la auditoría anterior.
 - Cumple / No cumple con botones grandes; al marcar *No cumple* pide anomalía, contramedida, responsable y plazo.
-- Fotos de evidencia con la cámara (hasta 3 por criterio) → van a la hoja **EVIDENCIAS** del Excel.
+- Fotos de evidencia con la cámara o la galería (hasta 6 por criterio) → van a la hoja **EVIDENCIAS** del Excel.
 - Resumen con % de cumplimiento, pendientes, no conformidades y fecha de la próxima auditoría (misma regla del Excel: ≤25 % → 7 días, ≤50 % → 14, ≤80 % → 21, >80 % → 30).
 - Descargar o **compartir** el Excel (WhatsApp, Teams, correo) desde el celular.
 - Descargar todas las auditorías en un .zip, y respaldo/restauración en .json para pasar los datos a otro equipo.

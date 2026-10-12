@@ -4,7 +4,7 @@
 
   const SECS = window.SECCIONES;
   const X = window.Xlsx5S;
-  const MAX_FOTOS = 3;
+  const MAX_FOTOS = X.MAX_PER_ITEM || 6;
 
   /* ---------- íconos ---------- */
   const I = {
@@ -37,6 +37,7 @@
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const pctTxt = p => Math.round(p * 100) + '%';
   const ringColor = p => p <= 0.5 ? 'var(--bad)' : p <= 0.8 ? 'var(--warn)' : 'var(--ok)';
+  const nivel = p => p <= 0.5 ? ['bad', 'Crítico'] : p <= 0.8 ? ['warn', 'En mejora'] : ['ok', 'Satisfactorio'];
   const secOf = n => SECS.find(s => s.items.some(i => i.n === n));
   const ORDER = ['datos', ...SECS.map(s => s.key), 'resumen'];
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -48,6 +49,18 @@
     t.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => t.classList.remove('show'), ms);
+  }
+
+  const isQuota = e => e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota|space|espacio/i.test(e.message || ''));
+  async function storageInfo(el) {
+    if (!el || !navigator.storage || !navigator.storage.estimate) return;
+    try {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      if (!quota) return;
+      const mb = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB';
+      const pct = Math.min(100, usage / quota * 100);
+      el.innerHTML = `Almacenamiento usado en este dispositivo: <b>${mb(usage)}</b> de ${mb(quota)} disponibles<div class="meter"><i style="width:${pct.toFixed(1)}%"></i></div>`;
+    } catch (e) { /* sin datos */ }
   }
 
   /* ---------- hoja inferior (diálogo) ---------- */
@@ -207,7 +220,7 @@
     document.title = "Auditorías 5'S";
 
     $('#appbar').innerHTML = `
-      <div class="title brand"><div class="brand-mark">5'S</div><div class="grow"><h1>Auditorías 5'S</h1><div class="sub">Formato de auditoría · Excel</div></div></div>
+      <div class="title brand"><div class="brand-mark">5S</div><div class="grow"><h1>Auditorías 5'S</h1><div class="sub">Registro de auditorías · Planta</div></div></div>
       <button class="icon-btn" id="listMenu" aria-label="Más opciones">${I.more}</button>`;
     $('#listMenu').onclick = () => openSheet(`
       <h2>Opciones</h2>
@@ -216,7 +229,9 @@
         <button data-a="backup">${I.save}<span>Guardar respaldo (.json)</span></button>
         <button data-a="import">${I.upload}<span>Restaurar respaldo</span></button>
       </div>
+      <div id="storeInfo" class="small muted" style="margin-top:14px"></div>
       <p class="muted small">Las auditorías se guardan solo en este dispositivo y navegador. Usa el respaldo para pasarlas a otro equipo.</p>`, s => {
+      storageInfo($('#storeInfo', s));
       $('[data-a=zip]', s).onclick = () => { closeSheet(); downloadAll(filtered()); };
       $('[data-a=backup]', s).onclick = () => { closeSheet(); backupExport(); };
       $('[data-a=import]', s).onclick = () => { closeSheet(); $('#importFile').click(); };
@@ -232,18 +247,19 @@
     }
 
     const view = $('#view');
-    view.className = 'view no-bottom';
-    $('#bottom').innerHTML = '';
+    view.className = 'view';
+    $('#bottom').innerHTML = `<div class="inner"><button class="btn primary" id="bNew">${I.plus} Nueva auditoría</button></div>`;
+    $('#bNew').onclick = () => newAuditSheet();
 
     if (!all.length) {
       view.innerHTML = `
         <div class="card empty">
-          <div class="art">${I.clip}</div>
-          <h2>Aún no hay auditorías</h2>
-          <p class="muted">Crea tu primera auditoría 5'S, respóndela desde el celular y descárgala en el formato Excel oficial.</p>
+          <h2>No hay auditorías registradas</h2>
+          <p class="muted">Registre una nueva auditoría 5'S. Al finalizar podrá descargarla en el formato Excel oficial.</p>
           <button class="btn primary" id="emptyNew">${I.plus} Nueva auditoría</button>
         </div>`;
       $('#emptyNew').onclick = () => newAuditSheet();
+      $('#bottom').innerHTML = '';
       return;
     }
 
@@ -254,44 +270,42 @@
     const thisMonth = all.filter(a => (a.fecha || '').startsWith(ym)).length;
 
     view.innerHTML = `
-      <div class="hero">
-        <div class="card stat"><b>${all.length}</b><span>Auditorías</span></div>
-        <div class="card stat"><b>${avg == null ? '—' : pctTxt(avg)}</b><span>Cumplimiento prom.</span></div>
-        <div class="card stat"><b>${thisMonth}</b><span>Este mes</span></div>
+      <div class="kpi-strip">
+        <div><b>${all.length}</b><span>Auditorías</span></div>
+        <div><b>${avg == null ? '—' : pctTxt(avg)}</b><span>Promedio</span></div>
+        <div><b>${thisMonth}</b><span>Este mes</span></div>
       </div>
-      <label class="search">${I.search}<input id="q" type="search" placeholder="Buscar proceso, auditor o fecha" value="${h(listState.q)}" autocomplete="off"></label>
-      ${procesos.length > 1 ? `<div class="chips" role="group" aria-label="Filtrar por proceso">
-        <button class="chip" data-p="" aria-pressed="${!listState.proceso}">Todos</button>
-        ${procesos.map(p => `<button class="chip" data-p="${h(p)}" aria-pressed="${listState.proceso === p}">${h(p)}</button>`).join('')}
-      </div>` : ''}
-      <div class="audit-list" id="alist"></div>`;
+      <label class="search">${I.search}<input id="q" type="search" placeholder="Buscar por proceso, auditor o fecha" value="${h(listState.q)}" autocomplete="off"></label>
+      ${procesos.length > 1 ? `<div class="filter"><select id="fProc" aria-label="Filtrar por proceso">
+        <option value="">Todos los procesos</option>
+        ${procesos.map(p => `<option value="${h(p)}" ${listState.proceso === p ? 'selected' : ''}>${h(p)}</option>`).join('')}
+      </select></div>` : ''}
+      <h2 class="section-title">Registro de auditorías</h2>
+      <div class="audit-list" id="alist" style="margin-top:0"></div>`;
 
     $('#q').addEventListener('input', e => { listState.q = e.target.value; drawCards(); });
-    $$('.chip', view).forEach(c => c.onclick = () => {
-      listState.proceso = c.dataset.p;
-      $$('.chip', view).forEach(x => x.setAttribute('aria-pressed', x === c));
-      drawCards();
-    });
+    const fp = $('#fProc');
+    if (fp) fp.onchange = () => { listState.proceso = fp.value; drawCards(); };
 
     function drawCards() {
       const items = filtered();
       const el = $('#alist');
-      if (!items.length) { el.innerHTML = `<p class="muted" style="text-align:center;padding:24px">Sin resultados.</p>`; return; }
+      if (!items.length) { el.innerHTML = `<p class="muted" style="padding:16px;margin:0">Sin resultados.</p>`; return; }
       el.innerHTML = items.map(a => {
         const sc = X.score(a);
         const it = iterationIndex(a, all);
         const complete = sc.pend === 0;
-        return `<article class="card audit">
+        return `<article class="audit">
           <button class="open" data-open="${a.id}">
-            <div class="ring" style="--p:${Math.round(sc.pct * 100)};--c:${ringColor(sc.pct)}"><span>${pctTxt(sc.pct)}</span></div>
+            <div class="score" style="--sc:${ringColor(sc.pct)}"><b>${pctTxt(sc.pct)}</b><span>Cumpl.</span></div>
             <div class="info">
               <h3>${h(a.proceso || 'Sin proceso')}</h3>
-              <div class="meta">${fechaCorta(a.fecha)} · ${h((a.auditores || []).filter(Boolean).join(', ') || 'Sin auditor')}</div>
+              <div class="meta">${X.fmtDMY(a.fecha) || 'Sin fecha'} · ${h((a.auditores || []).filter(Boolean).join(', ') || 'Sin auditor')}</div>
               <div class="tags">
-                ${a.proceso ? `<span class="tag">Iteración ${it}</span>` : ''}
-                ${complete ? '<span class="tag ok">Completa</span>' : `<span class="tag warn">${sc.pend} pendientes</span>`}
-                ${sc.nc ? `<span class="tag bad">${sc.nc} NC</span>` : ''}
-                ${complete && a.fecha ? `<span class="tag">Próx: ${X.fmtDMY(X.proximaAuditoria(a))}</span>` : ''}
+                ${complete ? '<span class="status ok">Completa</span>' : `<span class="status warn">En curso · ${sc.pend} pendientes</span>`}
+                ${a.proceso ? `<span>Iteración ${it}</span>` : ''}
+                ${sc.nc ? `<span>${sc.nc} NC</span>` : ''}
+                ${complete && a.fecha ? `<span>Próxima: ${X.fmtDMY(X.proximaAuditoria(a))}</span>` : ''}
               </div>
             </div>
           </button>
@@ -303,10 +317,6 @@
     }
     drawCards();
 
-    const fab = document.createElement('div');
-    fab.innerHTML = `<button class="fab" id="fab">${I.plus}<span>Nueva auditoría</span></button>`;
-    view.appendChild(fab);
-    $('#fab').onclick = () => newAuditSheet();
   }
 
   function auditMenu(a) {
@@ -393,7 +403,7 @@
     if (!ed.audit) return;
     ed.audit.updatedAt = Date.now();
     await DB.putAudit(ed.audit);
-    setSaveState('Guardado ✓');
+    setSaveState('Guardado');
   }
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && saveTimer) saveNow(); });
@@ -424,7 +434,7 @@
     $('#appbar').innerHTML = `
       <button class="icon-btn" id="back" aria-label="Volver a la lista">${I.back}</button>
       <div class="title"><h1>${h(a.proceso || 'Nueva auditoría')}</h1><div class="sub">${fechaCorta(a.fecha)}</div></div>
-      <span class="save-state" id="saveState">Guardado ✓</span>
+      <span class="save-state" id="saveState">Guardado</span>
       <button class="icon-btn" id="dlTop" aria-label="Descargar Excel">${I.download}</button>`;
     $('#back').onclick = async () => { await saveNow(); go('#/'); };
     $('#dlTop').onclick = async () => { await saveNow(); downloadAudit(a); };
@@ -449,12 +459,12 @@
     const sc = X.score(a);
     const answered = sc.c + sc.nc;
     const tabs = [
-      { key: 'datos', label: 'Datos', color: 'var(--primary-2)', cnt: a.proceso ? '✓' : '!' , done: !!a.proceso },
+      { key: 'datos', label: 'Datos generales', color: 'var(--primary)', cnt: '', done: !!a.proceso },
       ...SECS.map(s => {
         const n = s.items.filter(i => a.items[i.n]?.estado).length;
         return { key: s.key, label: s.corto, color: s.color, cnt: `${n}/${s.items.length}`, done: n === s.items.length };
       }),
-      { key: 'resumen', label: 'Resumen', color: 'var(--text)', cnt: pctTxt(sc.pct), done: sc.pend === 0 },
+      { key: 'resumen', label: 'Resumen', color: 'var(--text)', cnt: '', done: sc.pend === 0 },
     ];
     $('#prog').innerHTML = `
       <div class="progress-line"><span><b>${answered}</b> de ${sc.total} respondidos</span><span>Cumplimiento <b>${pctTxt(sc.pct)}</b></span></div>
@@ -488,7 +498,7 @@
     const procesos = [...new Set(ed.all.map(x => (x.proceso || '').trim()).filter(Boolean))];
     const body = $('#secBody');
     body.innerHTML = `
-      <div class="sec-head" style="--sc:var(--primary)"><div class="grow"><h2>Datos generales</h2><div class="small">Encabezado del formato</div></div></div>
+      <div class="sec-head" style="--sc:var(--primary)"><div class="sec-code">0</div><div class="grow"><h2>Datos generales</h2><div class="small">Encabezado del formato</div></div></div>
       <div class="card pad stack" style="margin-top:12px">
         <label class="field"><span>Proceso</span>
           <input class="input" id="fProceso" list="procList2" placeholder="Ej: Taller Mantenimiento" value="${h(a.proceso)}" autocomplete="off">
@@ -523,8 +533,9 @@
     const pend = sec.items.filter(i => !a.items[i.n]?.estado).length;
     body.innerHTML = `
       <div class="sec-head" style="--sc:${sec.color}">
-        <div class="grow"><h2>${h(sec.nombre)}</h2><div class="small">${sec.items.length} criterios · ${pend ? pend + ' pendientes' : 'completa'}</div></div>
-        ${pend ? `<button class="btn sm" id="allC">${I.check} Todo cumple</button>` : ''}
+        <div class="sec-code">${SECS.indexOf(sec) || 'S'}</div>
+        <div class="grow"><h2>${h(sec.nombre.replace(/^\d+\.\s*/, ''))}</h2><div class="small">${sec.items.length} criterios · ${pend ? pend + ' pendientes' : 'completa'}</div></div>
+        ${pend ? `<button class="btn sm" id="allC">Marcar pendientes C</button>` : ''}
       </div>
       <div id="crits">${sec.items.map(it => critHTML(sec, it)).join('')}</div>`;
     if (pend) $('#allC').onclick = () => {
@@ -544,11 +555,11 @@
     const responsables = [...new Set(ed.all.concat([ed.audit]).flatMap(x => Object.values(x.items || {}).map(v => v.responsable?.trim())).filter(Boolean))];
     const prevHint = it.n === 32 && ed.prev ? prevNCHint() : '';
     return `<article class="card crit ${d.estado === 'C' ? 'is-c' : isNC ? 'is-nc' : ''}" id="crit-${it.n}" style="--sc:${sec.color}">
-      <div class="top"><div class="num">${it.n}</div><p>${h(it.texto)}</p></div>
+      <div class="top"><div class="num">${it.n}</div><p class="grow">${h(it.texto)}</p></div>
       ${prevHint}
       <div class="answer" role="group" aria-label="Resultado del criterio ${it.n}">
-        <button class="opt c" data-v="C" aria-pressed="${d.estado === 'C'}">${I.check} Cumple</button>
-        <button class="opt nc" data-v="NC" aria-pressed="${isNC}">${I.x} No cumple</button>
+        <button class="opt c" data-v="C" aria-pressed="${d.estado === 'C'}"><abbr>C</abbr> Cumple</button>
+        <button class="opt nc" data-v="NC" aria-pressed="${isNC}"><abbr>NC</abbr> No cumple</button>
       </div>
       ${isNC ? `<div class="details">
         <label class="field"><span>Descripción de la anomalía</span><textarea class="input" data-f="desc" rows="2" placeholder="¿Qué se encontró?">${h(d.desc)}</textarea></label>
@@ -560,9 +571,10 @@
             <div class="quick">${[7, 15, 30].map(n => `<button type="button" data-plus="${n}">+${n} días</button>`).join('')}</div></label>
         </div>
       </div>` : ''}
-      <div class="photos" ${isNC ? 'style="padding-top:12px;background:var(--surface-2)"' : ''}>
+      <div class="photos ${isNC ? 'in-details' : ''}">
         ${ps.map(p => `<button class="thumb" data-ph="${p.id}" aria-label="Ver foto"><img src="${photoUrl(p)}" alt="Evidencia criterio ${it.n}"></button>`).join('')}
-        ${ps.length < MAX_FOTOS ? `<button class="add-photo" data-add>${I.camera} ${ps.length ? 'Otra foto' : 'Foto de evidencia'}</button>` : ''}
+        ${ps.length < MAX_FOTOS ? `<button class="add-photo" data-add>${I.camera} ${ps.length ? 'Agregar foto' : 'Evidencia fotográfica'}</button>` : ''}
+        ${ps.length ? `<span class="photo-count">${ps.length}/${MAX_FOTOS}</span>` : ''}
       </div>
     </article>`;
   }
@@ -615,12 +627,12 @@
   let photoTarget = null;
   function photoSource(n, sec, it) {
     photoTarget = { n, sec, it };
-    openSheet(`<h2>Foto de evidencia · criterio ${n}</h2>
+    openSheet(`<h2>Evidencia fotográfica · criterio ${n}</h2>
       <div class="menu">
         <button data-a="cam">${I.camera}<span>Tomar foto</span></button>
         <button data-a="gal">${I.image}<span>Elegir de la galería</span></button>
       </div>
-      <p class="muted small">Se guardan en la hoja EVIDENCIAS del Excel (máximo ${MAX_FOTOS} por criterio).</p>`, s => {
+      <p class="muted small">Se incluyen en la hoja EVIDENCIAS del Excel. Máximo ${MAX_FOTOS} fotos por criterio; en la galería puede seleccionar varias a la vez.</p>`, s => {
       $('[data-a=cam]', s).onclick = () => { closeSheet(); $('#photoCam').click(); };
       $('[data-a=gal]', s).onclick = () => { closeSheet(); $('#photoGal').click(); };
     });
@@ -631,22 +643,34 @@
     if (!files.length || !photoTarget || !ed.audit) return;
     const { n, sec, it } = photoTarget;
     const free = MAX_FOTOS - ed.photos.filter(p => p.item === n).length;
-    if (files.length > free) toast(`Solo se agregan ${free} foto${free === 1 ? '' : 's'} más (máximo ${MAX_FOTOS})`);
+    if (free <= 0) return toast(`Este criterio ya tiene el máximo de ${MAX_FOTOS} fotos`, 3500);
+    let ok = 0, err = null;
     for (const f of files.slice(0, free)) {
       try {
         const { blob, w, h: hh } = await compressImage(f);
         const p = { id: uid(), auditId: ed.audit.id, item: n, blob, w, h: hh, createdAt: Date.now() };
         await DB.putPhoto(p);
         ed.photos.push(p);
-      } catch (err) { console.error(err); toast('No se pudo leer la imagen'); }
+        ok++;
+      } catch (e2) { console.error(e2); err = e2; if (isQuota(e2)) break; }
     }
     if ($(`#crit-${n}`)) redrawCrit(sec, it);
-    toast('Foto guardada');
+    if (err && isQuota(err)) {
+      openSheet(`<h2>Sin espacio para más fotos</h2>
+        <p class="muted">El navegador no tiene espacio disponible para guardar más fotos en este dispositivo.${ok ? ` Se guardaron ${ok} foto${ok > 1 ? 's' : ''}.` : ''}</p>
+        <p class="muted small">Para liberar espacio: descargue en Excel las auditorías terminadas y elimínelas de la lista, libere memoria del teléfono, o use el navegador normal (no el modo incógnito).</p>
+        <div id="storeInfo2" class="small muted"></div>
+        <div class="actions"><button class="btn primary block" data-close>Entendido</button></div>`, s => { storageInfo($('#storeInfo2', s)); $('[data-close]', s).onclick = closeSheet; });
+      return;
+    }
+    if (err) toast(ok ? `Se guardaron ${ok} fotos; una no se pudo leer` : 'No se pudo leer la imagen. Intente con otra foto.', 3500);
+    else if (files.length > free) toast(`Se agregaron ${ok} fotos. Máximo ${MAX_FOTOS} por criterio.`, 3500);
+    else toast(ok > 1 ? `${ok} fotos guardadas` : 'Foto guardada');
   }
   $('#photoCam').addEventListener('change', onPhotoFiles);
   $('#photoGal').addEventListener('change', onPhotoFiles);
 
-  async function compressImage(file, max = 1280, q = 0.72) {
+  async function compressImage(file, max = 1600, q = 0.7) {
     const url = URL.createObjectURL(file);
     try {
       const img = new Image();
@@ -693,27 +717,32 @@
     const body = $('#secBody');
     body.innerHTML = `
       <div class="card pad">
-        <div class="summary-top">
-          <div class="ring lg" style="--p:${Math.round(sc.pct * 100)};--c:${ringColor(sc.pct)}"><span>${pctTxt(sc.pct)}</span></div>
-          <div class="grow"><div class="small muted">Calificación auditoría</div>
-            <div style="font-weight:800;font-size:1.15rem">${h(a.proceso || 'Sin proceso')}</div>
-            <div class="small muted">${fechaCorta(a.fecha)}<br>${h((a.auditores || []).filter(Boolean).join(', '))}</div></div>
+        <div class="result-head">
+          <div class="big-score" style="--sc:${ringColor(sc.pct)}"><b>${pctTxt(sc.pct)}</b><span>Calificación</span></div>
+          <div class="grow">
+            <div style="font-weight:600;font-size:1.05rem">${h(a.proceso || 'Sin proceso')}</div>
+            <div class="small muted">${X.fmtDMY(a.fecha)} · ${h((a.auditores || []).filter(Boolean).join(', '))}</div>
+            <div class="small" style="margin-top:6px"><span class="status ${nivel(sc.pct)[0]}">${nivel(sc.pct)[1]}</span></div>
+          </div>
         </div>
-        <div class="kpis">
-          <div class="kpi"><b style="color:var(--ok)">${sc.c}</b><span>Cumple</span></div>
-          <div class="kpi"><b style="color:var(--bad)">${sc.nc}</b><span>No cumple</span></div>
-          <div class="kpi"><b>${sc.pend}</b><span>Pendientes</span></div>
-        </div>
-        ${a.fecha ? `<div class="next"><div class="small muted">Próxima auditoría (en ${dias} días)</div><b>${X.fmtDMY(X.proximaAuditoria(a))}</b></div>` : ''}
       </div>
+      <div class="card" style="margin-top:12px"><table class="table">
+        <tr><th>Indicador</th><th style="text-align:right">Valor</th></tr>
+        <tr><td>Criterios que cumplen (C)</td><td class="n">${sc.c}</td></tr>
+        <tr><td>Criterios que no cumplen (NC)</td><td class="n">${sc.nc}</td></tr>
+        <tr><td>Criterios pendientes</td><td class="n">${sc.pend}</td></tr>
+        <tr><td>Total de criterios</td><td class="n">${sc.total}</td></tr>
+        ${a.fecha ? `<tr><td>Próxima auditoría <span class="muted small">(${dias} días)</span></td><td class="n"><b>${X.fmtDMY(X.proximaAuditoria(a))}</b></td></tr>` : ''}
+      </table></div>
 
-      ${issues.length ? `<div class="hint" style="margin:12px 0 0">${issues.join('<br>')}</div>` : ''}
+      ${issues.length ? `<div class="notice" style="margin-top:12px">${issues.join('<br>')}</div>` : ''}
 
-      <h2 class="section-title">Por sección</h2>
-      <div class="card"><ul class="list">
+      <h2 class="section-title">Resultado por sección</h2>
+      <div class="card"><table class="table">
+        <tr><th>Sección</th><th style="text-align:right">C</th><th style="text-align:right">NC</th><th style="text-align:right">Pend.</th></tr>
         ${SECS.map(s => { const c = s.items.filter(i => a.items[i.n]?.estado === 'C').length; const n = s.items.filter(i => a.items[i.n]?.estado === 'NC').length;
-          return `<li><button class="link" data-sec="${s.key}"><span class="num" style="--sc:${s.color}">${s.items.length}</span><span class="grow"><b>${h(s.corto)}</b><br><span class="small muted">${c} cumple · ${n} no cumple · ${s.items.length - c - n} pendientes</span></span>${I.next.replace('<svg', '<svg width="20" height="20" style="color:var(--muted);flex:none;margin-top:6px"')}</button></li>`; }).join('')}
-      </ul></div>
+          return `<tr class="link" data-sec="${s.key}"><td><span class="num" style="--sc:${s.color};display:inline-grid;margin-right:8px;min-width:22px;height:20px;font-size:.7rem">${SECS.indexOf(s) || 'S'}</span>${h(s.corto)}</td><td class="n">${c}</td><td class="n">${n}</td><td class="n">${s.items.length - c - n}</td></tr>`; }).join('')}
+      </table></div>
 
       ${pend.length ? `<h2 class="section-title">Pendientes (${pend.length})</h2>
       <div class="card"><ul class="list">${pend.map(i => itemLink(i, '')).join('')}</ul></div>` : ''}
@@ -724,12 +753,12 @@
         const extra = `<div class="small" style="margin-top:4px">${d.desc ? h(d.desc) + '<br>' : ''}${d.contramedida ? `<b>Contramedida:</b> ${h(d.contramedida)}` : '<span class="warn-text">Sin contramedida</span>'}
           ${d.responsable || d.plazo ? `<br><span class="muted">${h(d.responsable || 'Sin responsable')}${d.plazo ? ' · ' + X.fmtDMY(d.plazo) : ''}</span>` : ''}</div>`;
         return itemLink(i, extra);
-      }).join('')}</ul></div>` : `<div class="card pad muted">Sin no conformidades registradas.</div>`}
+      }).join('')}</ul></div>` : `<div class="card pad muted">No se registraron no conformidades.</div>`}
 
       <div class="stack" style="margin-top:18px">
         <button class="btn primary block" id="sDl">${I.download} Descargar Excel</button>
         <button class="btn block" id="sShare">${I.share} Compartir Excel</button>
-        <button class="btn block ghost" id="sIter">${I.copy} Nueva iteración</button>
+        <button class="btn block ghost" id="sIter">Programar nueva iteración del proceso</button>
       </div>`;
     $$('[data-sec]', body).forEach(b => b.onclick = () => goSec(b.dataset.sec));
     $$('[data-go]', body).forEach(b => b.onclick = () => {

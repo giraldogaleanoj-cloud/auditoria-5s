@@ -123,13 +123,17 @@
   const SLOT_W = COL_PX * 2;  // 3 fotos por fila, 2 columnas cada una
   const BOX_W = SLOT_W - 12, BOX_H = ROW_PX - 14;
 
+  const PER_LINE = 3;         // fotos por línea dentro de la celda de evidencia
+  const MAX_PER_ITEM = 6;     // 2 líneas de 3 fotos por criterio
+
   function anchorXml(idx, rId, rowIdx0, slot, w, h) {
     const k = Math.min(BOX_W / w, BOX_H / h, 1);
     const pw = Math.round(w * k), ph = Math.round(h * k);
-    let xPx = slot * SLOT_W + Math.round((SLOT_W - pw) / 2);
-    let col = 3 + Math.floor(xPx / COL_PX);
+    const colSlot = slot % PER_LINE, line = Math.floor(slot / PER_LINE);
+    const xPx = colSlot * SLOT_W + Math.round((SLOT_W - pw) / 2);
+    const col = 3 + Math.floor(xPx / COL_PX);
     const colOff = (xPx % COL_PX) * EMU;
-    const rowOff = Math.round((ROW_PX - ph) / 2) * EMU;
+    const rowOff = (line * ROW_PX + Math.round((ROW_PX - ph) / 2)) * EMU;
     return `<xdr:oneCellAnchor><xdr:from><xdr:col>${col}</xdr:col><xdr:colOff>${colOff}</xdr:colOff><xdr:row>${rowIdx0}</xdr:row><xdr:rowOff>${rowOff}</xdr:rowOff></xdr:from><xdr:ext cx="${pw * EMU}" cy="${ph * EMU}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${idx + 2}" name="Evidencia ${idx + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:r="${MAIN_NS_R}" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${pw * EMU}" cy="${ph * EMU}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
   }
 
@@ -216,7 +220,7 @@
       let rels = '';
       pics.forEach((p, i) => {
         const slot = (perItem[p.item] = (perItem[p.item] ?? -1) + 1);
-        if (slot > 2) return; // máximo 3 por criterio en el Excel
+        if (slot >= MAX_PER_ITEM) return;
         const ext = p.ext === 'png' ? 'png' : 'jpeg';
         const name = `evidencia${i + 1}.${ext}`;
         files['xl/media/' + name] = p.bytes;
@@ -224,6 +228,14 @@
         rels += `<Relationship Id="${rId}" Type="${MAIN_NS_R}/image" Target="../media/${name}"/>`;
         anchors += anchorXml(i, rId, evidenciasRow(p.item) - 1, slot, p.w, p.h);
       });
+      // Filas con más de 3 fotos: se duplica la altura para una segunda línea de fotos
+      for (const [item, last] of Object.entries(perItem)) {
+        const lines = Math.ceil((Math.min(last, MAX_PER_ITEM - 1) + 1) / PER_LINE);
+        if (lines > 1) {
+          const r = evidenciasRow(+item);
+          s3 = s3.replace(new RegExp(`(<row r="${r}"[^>]*?)ht="[\\d.]+"`), `$1ht="${(150.75 * lines).toFixed(2)}"`);
+        }
+      }
       files['xl/drawings/drawing2.xml'] = enc.encode(
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${anchors}</xdr:wsDr>`);
       files['xl/drawings/_rels/drawing2.xml.rels'] = enc.encode(
@@ -266,5 +278,5 @@
     return `Auditoria_5S_${proc}_${audit.fecha || 'sin-fecha'}.xlsx`;
   }
 
-  window.Xlsx5S = { buildXlsx, fileName, score, diasProxima, proximaAuditoria, fmtDMY, addDaysISO, excelSerial, setCell };
+  window.Xlsx5S = { MAX_PER_ITEM, buildXlsx, fileName, score, diasProxima, proximaAuditoria, fmtDMY, addDaysISO, excelSerial, setCell };
 })();

@@ -1,6 +1,6 @@
 /* Service worker: permite usar la app sin conexión (en planta sin señal). 
    Cambia VERSION cada vez que publiques cambios para forzar la actualización. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'auditorias5s-' + VERSION;
 const ASSETS = [
   './', './index.html', './css/styles.css',
