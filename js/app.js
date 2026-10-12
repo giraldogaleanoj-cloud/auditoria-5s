@@ -26,6 +26,8 @@
     list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>',
     next: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>',
     edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
     clip: '<svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="26" y="18" width="68" height="90" rx="10" fill="currentColor" fill-opacity=".08"/><rect x="44" y="10" width="32" height="16" rx="6" fill="currentColor" fill-opacity=".15"/><path d="M40 50l6 6 10-12M40 74l6 6 10-12"/><path d="M66 52h16M66 76h16"/></svg>',
   };
 
@@ -62,6 +64,25 @@
       el.innerHTML = `Almacenamiento usado en este dispositivo: <b>${mb(usage)}</b> de ${mb(quota)} disponibles<div class="meter"><i style="width:${pct.toFixed(1)}%"></i></div>`;
     } catch (e) { /* sin datos */ }
   }
+
+  /* ---------- tema claro / oscuro ---------- */
+  const THEME_KEY = 'a5s-theme';
+  const darkMQ = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  function getTheme() { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { return 'auto'; } }
+  const isDark = () => { const t = getTheme(); return t === 'dark' || (t === 'auto' && !!darkMQ && darkMQ.matches); };
+  function applyTheme() {
+    const t = getTheme();
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark() ? '#121a24' : '#1f3a5f');
+    const btn = document.getElementById('themeBtn');
+    if (btn) { btn.innerHTML = isDark() ? I.sun : I.moon; btn.setAttribute('aria-label', isDark() ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'); }
+  }
+  function setTheme(t) { try { if (t === 'auto') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, t); } catch (e) { /* sin almacenamiento */ } applyTheme(); }
+  const toggleTheme = () => setTheme(isDark() ? 'light' : 'dark');
+  if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', applyTheme);
+  const themeBtnHTML = () => `<button class="icon-btn" id="themeBtn" aria-label="${isDark() ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}">${isDark() ? I.sun : I.moon}</button>`;
 
   /* ---------- hoja inferior (diálogo) ---------- */
   const sheet = $('#sheet');
@@ -221,7 +242,9 @@
 
     $('#appbar').innerHTML = `
       <div class="title brand"><div class="brand-mark">5S</div><div class="grow"><h1>Auditorías 5'S</h1><div class="sub">Registro de auditorías · Planta</div></div></div>
+      ${themeBtnHTML()}
       <button class="icon-btn" id="listMenu" aria-label="Más opciones">${I.more}</button>`;
+    $('#themeBtn').onclick = toggleTheme;
     $('#listMenu').onclick = () => openSheet(`
       <h2>Opciones</h2>
       <div class="menu">
@@ -229,9 +252,16 @@
         <button data-a="backup">${I.save}<span>Guardar respaldo (.json)</span></button>
         <button data-a="import">${I.upload}<span>Restaurar respaldo</span></button>
       </div>
+      <div class="small muted" style="margin-top:16px">Apariencia</div>
+      <div class="theme-choice" role="group" aria-label="Apariencia">
+        <button data-t="light" aria-pressed="${getTheme() === 'light'}">Claro</button>
+        <button data-t="dark" aria-pressed="${getTheme() === 'dark'}">Oscuro</button>
+        <button data-t="auto" aria-pressed="${getTheme() === 'auto'}">Automático</button>
+      </div>
       <div id="storeInfo" class="small muted" style="margin-top:14px"></div>
       <p class="muted small">Las auditorías se guardan solo en este dispositivo y navegador. Usa el respaldo para pasarlas a otro equipo.</p>`, s => {
       storageInfo($('#storeInfo', s));
+      $$('[data-t]', s).forEach(b => b.onclick = () => { setTheme(b.dataset.t); $$('[data-t]', s).forEach(x => x.setAttribute('aria-pressed', x === b)); });
       $('[data-a=zip]', s).onclick = () => { closeSheet(); downloadAll(filtered()); };
       $('[data-a=backup]', s).onclick = () => { closeSheet(); backupExport(); };
       $('[data-a=import]', s).onclick = () => { closeSheet(); $('#importFile').click(); };
@@ -435,8 +465,10 @@
       <button class="icon-btn" id="back" aria-label="Volver a la lista">${I.back}</button>
       <div class="title"><h1>${h(a.proceso || 'Nueva auditoría')}</h1><div class="sub">${fechaCorta(a.fecha)}</div></div>
       <span class="save-state" id="saveState">Guardado</span>
+      ${themeBtnHTML()}
       <button class="icon-btn" id="dlTop" aria-label="Descargar Excel">${I.download}</button>`;
     $('#back').onclick = async () => { await saveNow(); go('#/'); };
+    $('#themeBtn').onclick = toggleTheme;
     $('#dlTop').onclick = async () => { await saveNow(); downloadAudit(a); };
 
     const view = $('#view');
@@ -806,6 +838,7 @@
     $('#view').innerHTML = '<div class="card pad">Este navegador no permite guardar datos. Prueba con Chrome, Edge o Safari actualizados.</div>';
     return;
   }
+  applyTheme();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});

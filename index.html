@@ -14,6 +14,10 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    /* Aplica el tema guardado antes de pintar la página (evita parpadeo) */
+    (function () { try { var t = localStorage.getItem('a5s-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+  </script>
 </head>
 <body>
   <header class="appbar" id="appbar"></header>

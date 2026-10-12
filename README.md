@@ -12,6 +12,7 @@ Aplicación web para diligenciar el formato **AUDITORÍA 5'S** desde el celular 
 - Descargar o **compartir** el Excel (WhatsApp, Teams, correo) desde el celular.
 - Descargar todas las auditorías en un .zip, y respaldo/restauración en .json para pasar los datos a otro equipo.
 - Funciona sin conexión después de la primera visita y se puede instalar en la pantalla de inicio.
+- Modo claro, oscuro o automático (según el celular), con el botón de sol/luna o en el menú ⋮.
 - Sin librerías externas: no depende de ningún CDN.
 
 ## Publicar en GitHub Pages
