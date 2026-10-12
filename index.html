@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Auditorías 5'S</title>
+  <meta name="description" content="Diligencia el formato de auditoría 5'S desde el celular y descárgalo en Excel.">
+  <meta name="theme-color" content="#0b3d7a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="5'S">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="appbar" id="appbar"></header>
+  <main id="view" class="view" tabindex="-1"></main>
+  <div id="bottom" class="bottom"></div>
+
+  <dialog id="sheet" class="sheet"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+  <input type="file" id="photoCam" accept="image/*" capture="environment" hidden>
+  <input type="file" id="photoGal" accept="image/*" multiple hidden>
+
+  <noscript>Esta aplicación necesita JavaScript activado.</noscript>
+
+  <script src="js/data.js"></script>
+  <script src="js/template.js"></script>
+  <script src="js/zip.js"></script>
+  <script src="js/xlsx-export.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
